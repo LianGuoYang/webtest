@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"log"
 )
 
 func computeSHA256(file io.Reader) (string, []byte, error) {
@@ -25,5 +26,7 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 }
 
 func writeJSONError(w http.ResponseWriter, status int, msg string) {
+	log.Printf("HTTP %d: %s", status, msg)
+
 	writeJSON(w, status, map[string]any{"error": msg})
 }

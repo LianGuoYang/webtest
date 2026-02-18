@@ -243,7 +243,7 @@ button:hover {
       <input type="file" name="file" required />
       <br><br>
       <button type="submit">Scan File</button>
-      <div class="small">Max 10MB</div>
+      <div class="small">Max 650MB</div>
     </form>
   </div>
 
@@ -275,13 +275,20 @@ button:hover {
         body: formData
       });
 
-      const data = await res.json();   // ✅ parse FIRST
+      const data = await res.json();
 
-      if (!res.ok || data.error) {
-        const msg = data.error || ("Request failed (HTTP " + res.status + ")");
-        aiBox.innerHTML = "<div class='error'><b>Error:</b> " + msg + "</div>";
+      if (!res.ok || data.error || data.message) {
+        const msg =
+          data.error ??
+          data.message ??
+          data.detail ??
+          "Request failed (HTTP " + res.status + ")";
+
+        aiBox.innerHTML =
+          "<div class='error'><b>Error:</b> " + msg + "</div>";
         return;
       }
+
 
       // -------------------------
       // Risk badge logic
@@ -343,7 +350,8 @@ button:hover {
       renderHistory();   // call AFTER pushing
 
     } catch (err) {
-      aiBox.innerHTML = "<div class='error'><b>Error:</b> " + err + "</div>";
+      const msg = err?.message || "Unexpected network error";
+      aiBox.innerHTML = "<div class='error'><b>Error:</b> " + msg + "</div>";
     }
   });
 
