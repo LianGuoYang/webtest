@@ -113,3 +113,163 @@ Your submission will be assessed on:
 
 We look forward to seeing your innovative solutions and thoughtful designs!  
 **CloudsineAI Team**  
+
+---
+
+---
+
+# VirusTotal + Gemini AI File Scanner
+
+## Overview
+This project is a cloud-native web application built with **Golang** that scans uploaded files using the **VirusTotal API** and generates structured security explanations using **Google Gemini AI**. 
+
+The application is containerized with **Docker**, deployed on **AWS EC2**, and configured with **CI/CD automation** via GitHub Actions.
+
+
+
+---
+
+## Features
+* **Secure File Upload**: xMB limit enforced server-side.
+* **Efficient Scanning**: VirusTotal hash lookup before full file submission.
+* **AI Interpretation**: Structured security explanations generated via Gemini for lay users.
+* **Modern UI**: Dynamic frontend rendering with a scan history sidebar.
+* **Cloud Ready**: Dockerized deployment with AWS Secrets Manager integration.
+* **Resilient**: Graceful handling of API rate limits (HTTP 429).
+* **Automated**: Full CI/CD pipeline via GitHub Actions.
+
+---
+
+## Architecture
+
+### Frontend
+* HTML5, CSS3, and JavaScript (Vanilla).
+* Dynamic result rendering with risk-based color indicators.
+* Persistent scan history panel for the session.
+
+### Backend
+* **Golang** HTTP server for high-performance concurrency.
+* Secure multipart file handling and SHA256 hashing.
+* Integration with VirusTotal and Gemini REST APIs.
+
+### Infrastructure
+* **AWS EC2 (Ubuntu)**: Reliable hosting environment.
+* **Docker**: Consistent container runtime.
+* **Networking**: Elastic IP and Security Groups (Ports 80/22).
+* **Security**: IAM Roles for secure access to Secrets Manager.
+
+
+
+---
+
+## Project Structure
+```text
+.
+├── .github/
+│   └── workflows/
+│       ├── ci.yml             # CI/CD pipeline
+│       └── deploy.yml         # Deployment workflow
+├── main.go                    # Server entry point
+├── handler.go                 # Request/Response logic
+├── virustotal.go              # VirusTotal API client
+├── gemini.go                  # Gemini AI integration
+├── utils.go                   # Hashing and validation helpers
+├── page.go                    # HTML template rendering
+├── Dockerfile                 # Container configuration
+├── go.mod                     # Dependency management
+└── README.md                  # Project documentation
+
+```
+
+## Live Deployment
+
+The application is publicly accessible at:
+
+[http://18.142.78.188](http://18.142.78.188)
+
+---
+
+### Hosting Details
+
+The server is hosted on an **AWS EC2** Ubuntu instance with the following setup:
+
+- Docker container runtime
+- Elastic IP attached
+- Port **80** exposed via Security Group
+- Automatic container restart policy enabled
+- CI/CD pipeline with auto-deployment on push to `main`
+
+---
+
+## Local Setup Guide
+
+### Prerequisites
+
+Ensure the following are installed:
+
+- **Go 1.25** or later
+- **Docker** (optional, for containerized execution)
+- **VirusTotal API key**
+- **Gemini API key**
+
+---
+
+## Option 1 — Run Locally (Without Docker)
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/your-username/your-repository.git
+cd your-repository
+````
+
+### 2. Create Environment File
+
+Create a file named `.env` in the project root:
+
+```env
+VT_API_KEY=your_virustotal_api_key
+GEMINI_API_KEY=your_gemini_api_key
+```
+
+### 3. Install Dependencies
+
+```bash
+go mod tidy
+```
+
+### 4. Run the Application
+
+```bash
+go run main.go
+```
+
+### 5. Access the Server
+
+The server will start at:
+
+```
+http://localhost:8080
+```
+
+---
+
+## Option 2 — Run Using Docker
+
+### 1. Build Docker Image
+
+```bash
+docker build -t virustotal-scanner .
+```
+
+### 2. Run the Container
+
+```bash
+docker run -p 8080:8080 --env-file .env virustotal-scanner
+```
+
+### 3. Access the Server
+
+```
+http://localhost:8080
+```
