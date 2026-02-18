@@ -12,40 +12,45 @@ func generateGeminiExplanation(apiKey, filename string,
 	malicious, suspicious, harmless, undetected int) string {
 
 	prompt := fmt.Sprintf(`
-	You are a cybersecurity assistant.
+		You are a cybersecurity assistant.
 
-	Interpret ONLY the VirusTotal detection statistics below.
+		File: %s
 
-	Risk rules:
-	- If malicious > 0 → Risk Level: High
-	- If malicious = 0 and suspicious > 0 → Risk Level: Medium
-	- If malicious = 0 and suspicious = 0 → Risk Level: Low
+		VirusTotal statistics:
+		- Malicious: %d
+		- Suspicious: %d
+		- Harmless: %d
+		- Undetected: %d
 
-	Do NOT speculate about file behavior.
-	Do NOT interpret filename meaning.
-	Do NOT exaggerate.
-	Be factual and clear.
+		Risk rules:
+		- If malicious > 0 → Risk Level: High
+		- If malicious = 0 and suspicious > 0 → Risk Level: Medium
+		- If malicious = 0 and suspicious = 0 → Risk Level: Low
 
-	Format exactly like this:
+		Do NOT speculate.
+		Be factual.
 
-	Scan Summary:
-	- <one clear sentence>
+		Format exactly like this:
 
-	Risk Level:
-	- <Low / Medium / High>
+		Scan Summary:
+		- <one clear sentence>
 
-	Recommended Action:
-	- <one practical step>
+		Risk Level:
+		- <Low / Medium / High>
 
-	Avoid:
-	- <one short warning>
-	`,
-		filename,
-		malicious,
-		suspicious,
-		harmless,
-		undetected,
+		Recommended Action:
+		- <one practical step>
+
+		Avoid:
+		- <one short warning>
+		`,
+			filename,
+			malicious,
+			suspicious,
+			harmless,
+			undetected,
 	)
+
 
 	reqBody := map[string]any{
 		"contents": []map[string]any{
@@ -60,8 +65,8 @@ func generateGeminiExplanation(apiKey, filename string,
 	bodyBytes, _ := json.Marshal(reqBody)
 
 	url := fmt.Sprintf(
-	"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=%s",
-	apiKey,
+		"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=%s",
+		apiKey,
 	)
 
 	if apiKey == "" {
