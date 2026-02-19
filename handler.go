@@ -5,12 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"time"
 )
-
 
 func mainHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
@@ -21,43 +19,48 @@ func mainHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func processScan(w http.ResponseWriter, r *http.Request) {
-	// 1. Save API Keys
+	// Load API keys from environment
 	vtKey := os.Getenv("VT_API_KEY")
 	geminiKey := os.Getenv("GEMINI_API_KEY")
 
 	if vtKey == "" {
-		writeJSONError(w, 500, "Server configuration error: Empty VirusTotal API KEY ")
+		writeJSONError(w, http.StatusInternalServerError,
+			"Server configuration error: missing VirusTotal API key")
 		return
 	}
 
 	if geminiKey == "" {
-		writeJSONError(w, 500, "Server configuration error: Empty Gemini API KEY")
+		writeJSONError(w, http.StatusInternalServerError,
+			"Server configuration error: missing Gemini API key")
 		return
 	}
-	
-	// Ensure file size 
-	const maxUploadSize = 650 << 20
-	const maxDirectUpload = 32 << 20
 
+	// Configure upload limits
+	const maxUploadSize = 650 << 20  // 650MB absolute limit
+	const maxDirectUpload = 32 << 20 // 32MB direct VT upload limit
+
+	// Protect server from oversized uploads
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
 
 	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
-		writeJSONError(w, 400, "File larger than 650MB or invalid form data")
+		writeJSONError(w, http.StatusBadRequest,
+			"File larger than 650MB or invalid form data")
 		return
 	}
 
+	// Retrieve uploaded file
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		writeJSONError(w, 400, "File missing")
+		writeJSONError(w, http.StatusBadRequest, "File missing")
 		return
 	}
 	defer file.Close()
 
-
-	// Temp file for large files (memory safe)
+	// Store file temporarily (memory-safe for large uploads)
 	tmpFile, err := os.CreateTemp("", "upload-*")
 	if err != nil {
-		writeJSONError(w, 500, "Failed to create temp file")
+		writeJSONError(w, http.StatusInternalServerError,
+			"Failed to create temporary file")
 		return
 	}
 	defer os.Remove(tmpFile.Name())
@@ -65,64 +68,84 @@ func processScan(w http.ResponseWriter, r *http.Request) {
 
 	size, err := io.Copy(tmpFile, file)
 	if err != nil {
-		writeJSONError(w, 500, "Failed to store file")
+		writeJSONError(w, http.StatusInternalServerError,
+			"Failed to store uploaded file")
 		return
 	}
 
+	// Reset file pointer for hashing
 	if _, err := tmpFile.Seek(0, 0); err != nil {
-		writeJSONError(w, 500, "File seek failed")
+		writeJSONError(w, http.StatusInternalServerError,
+			"Failed to reset file pointer")
 		return
 	}
 
-	// Check hash of the file for quick look up
+	// Compute SHA256 hash for VT lookup
 	hasher := sha256.New()
 	if _, err := io.Copy(hasher, tmpFile); err != nil {
-		writeJSONError(w, 500, "Hashing failed")
+		writeJSONError(w, http.StatusInternalServerError,
+			"Hash computation failed")
 		return
 	}
 	hash := hex.EncodeToString(hasher.Sum(nil))
 
+	// Reset file pointer again before uploading
 	if _, err := tmpFile.Seek(0, 0); err != nil {
-		writeJSONError(w, 500, "File seek failed")
+		writeJSONError(w, http.StatusInternalServerError,
+			"Failed to reset file pointer")
 		return
 	}
 
+	// Check if file already exists in VirusTotal database
 	stats, status, found, err := getFileReport(vtKey, hash)
 	if err != nil {
-		writeJSONError(w, 500, err.Error())
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
+	// If not found, upload file for analysis
 	if !found {
-
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 		defer cancel()
 
-		// Upload file to VirusTotal for full scan
 		var analysisID string
 
 		if size <= maxDirectUpload {
+			// Direct upload (≤32MB)
 			analysisID, err = uploadToVirusTotal(vtKey, header.Filename, tmpFile)
 		} else {
-			uploadURL, err := getLargeUploadURL(ctx, vtKey)
+			// Large file upload (32MB–650MB)
+			var uploadURL string
+			uploadURL, err = getLargeUploadURL(ctx, vtKey)
 			if err != nil {
-				writeJSONError(w, 500, "Failed to get upload URL")
+				writeJSONError(w, http.StatusInternalServerError,
+					"Failed to obtain upload URL")
 				return
 			}
 			analysisID, err = uploadLargeFile(ctx, uploadURL, header.Filename, tmpFile)
 		}
-		log.Println(analysisID)
+
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		// Poll VT until analysis completes
 		stats, status, err = pollAnalysis(vtKey, analysisID)
 		if err != nil {
-			writeJSONError(w, 500, "Polling failed")
+			writeJSONError(w, http.StatusInternalServerError,
+				"Analysis polling failed")
 			return
 		}
 	}
 
+	// Extract detection statistics
 	malicious := stats["malicious"]
 	suspicious := stats["suspicious"]
 	harmless := stats["harmless"]
 	undetected := stats["undetected"]
+
+	// Derive simple verdict
 	verdict := "Likely Safe"
 	if malicious > 0 {
 		verdict = "Malicious File Detected"
@@ -130,7 +153,7 @@ func processScan(w http.ResponseWriter, r *http.Request) {
 		verdict = "Potentially Suspicious"
 	}
 
-	// 3. Generate AI Explanation
+	// Generate AI explanation
 	aiText := generateGeminiExplanation(
 		geminiKey,
 		header.Filename,
@@ -140,14 +163,15 @@ func processScan(w http.ResponseWriter, r *http.Request) {
 		undetected,
 	)
 
-	writeJSON(w, 200, map[string]any{
+	// Return structured JSON response
+	writeJSON(w, http.StatusOK, map[string]any{
 		"filename":       header.Filename,
 		"status":         status,
 		"malicious":      malicious,
 		"suspicious":     suspicious,
 		"harmless":       harmless,
 		"undetected":     undetected,
-		"verdict":		  verdict,
+		"verdict":        verdict,
 		"ai_explanation": aiText,
 	})
 }

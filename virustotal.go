@@ -12,10 +12,17 @@ import (
 	"time"
 )
 
+// getFileReport queries VirusTotal’s `/files/{hash}` endpoint to retrieve
+// existing analysis statistics for a file based on its SHA256 hash.
+// Reference: https://docs.virustotal.com/reference/file-info
 func getFileReport(apiKey, hash string) (map[string]int, string, bool, error) {
 	url := fmt.Sprintf("https://www.virustotal.com/api/v3/files/%s", hash)
 
-	req, _ := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, "", false, err
+	}
+
 	req.Header.Set("x-apikey", apiKey)
 
 	resp, err := http.DefaultClient.Do(req)
@@ -24,11 +31,27 @@ func getFileReport(apiKey, hash string) (map[string]int, string, bool, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == 404 {
+	switch resp.StatusCode {
+	case http.StatusOK:
+		// File exists in VirusTotal database → continue parsing response
+
+	case http.StatusNotFound:
+		// Hash not found in VirusTotal
 		return nil, "", false, nil
+
+	case http.StatusTooManyRequests:
+		// Free API quota exceeded (rate limit hit)
+		return nil, "", false, fmt.Errorf("rate limit exceeded (429)")
+
+	default:
+		// Any other unexpected HTTP error
+		return nil, "", false, fmt.Errorf("VT file lookup failed: %d", resp.StatusCode)
 	}
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", false, err
+	}
 
 	var result struct {
 		Data struct {
@@ -38,7 +61,9 @@ func getFileReport(apiKey, hash string) (map[string]int, string, bool, error) {
 		} `json:"data"`
 	}
 
-	json.Unmarshal(body, &result)
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, "", false, err
+	}
 
 	return result.Data.Attributes.LastAnalysisStats,
 		"completed",
@@ -46,18 +71,32 @@ func getFileReport(apiKey, hash string) (map[string]int, string, bool, error) {
 		nil
 }
 
+// Reference: https://docs.virustotal.com/reference/files-scan
+// uploadToVirusTotal sends a file (≤32MB) to VirusTotal’s `/files` endpoint using multipart/form-data.
 func uploadToVirusTotal(apiKey, filename string, file io.Reader) (string, error) {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 
-	part, _ := writer.CreateFormFile("file", filename)
-	io.Copy(part, file)
-	writer.Close()
+	part, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		return "", err
+	}
 
-	req, _ := http.NewRequest("POST",
+	if _, err := io.Copy(part, file); err != nil {
+		return "", err
+	}
+
+	if err := writer.Close(); err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequest("POST",
 		"https://www.virustotal.com/api/v3/files",
 		&buf,
 	)
+	if err != nil {
+		return "", err
+	}
 
 	req.Header.Set("x-apikey", apiKey)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -68,7 +107,21 @@ func uploadToVirusTotal(apiKey, filename string, file io.Reader) (string, error)
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	switch resp.StatusCode {
+	case http.StatusOK:
+		// Upload successful → parse analysis ID
+
+	case http.StatusTooManyRequests:
+		return "", fmt.Errorf("rate limit exceeded (429)")
+
+	default:
+		return "", fmt.Errorf("VT upload failed: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
 
 	var out struct {
 		Data struct {
@@ -76,10 +129,16 @@ func uploadToVirusTotal(apiKey, filename string, file io.Reader) (string, error)
 		} `json:"data"`
 	}
 
-	json.Unmarshal(body, &out)
+	if err := json.Unmarshal(body, &out); err != nil {
+		return "", err
+	}
+
 	return out.Data.ID, nil
 }
 
+// Reference: https://docs.virustotal.com/reference/files-upload-url
+// getLargeUploadURL retrieves a one-time upload URL from VirusTotal
+// for files larger than 32MB (up to 650MB).
 func getLargeUploadURL(ctx context.Context, apiKey string) (string, error) {
 	req, err := http.NewRequestWithContext(
 		ctx,
@@ -107,7 +166,24 @@ func getLargeUploadURL(ctx context.Context, apiKey string) (string, error) {
 		return "", err
 	}
 
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
+    	// Successfully retrieved upload URL
+
+	case http.StatusUnauthorized:
+		// Invalid or missing API key
+		return "", fmt.Errorf("unauthorized (401)")
+
+	case http.StatusNotFound:
+		// Analysis ID not found
+		return "", fmt.Errorf("analysis ID not found (404)")
+
+	case http.StatusTooManyRequests:
+		// API rate limit exceeded
+		return "", fmt.Errorf("rate limit exceeded (429)")
+
+	default:
+		// Any unexpected HTTP error
 		return "", fmt.Errorf("upload_url failed (%d): %s", resp.StatusCode, string(body))
 	}
 
@@ -173,8 +249,21 @@ func uploadLargeFile(ctx context.Context, uploadURL, filename string, file *os.F
 		return "", err
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("large upload failed (%d): %s", resp.StatusCode, string(body))
+	switch resp.StatusCode {
+	case http.StatusOK:
+		// Receives upload URL
+
+	case http.StatusUnauthorized:
+		return "", fmt.Errorf("upload URL expired or unauthorized (401)")
+
+	case http.StatusForbidden:
+		return "", fmt.Errorf("upload forbidden or expired (403)")
+
+	case http.StatusTooManyRequests:
+		return "", fmt.Errorf("rate limit exceeded (429)")
+
+	default:
+		return "", fmt.Errorf("large upload failed: %d", resp.StatusCode)
 	}
 
 	var out struct {
@@ -194,12 +283,17 @@ func uploadLargeFile(ctx context.Context, uploadURL, filename string, file *os.F
 	return out.Data.ID, nil
 }
 
+// pollAnalysis repeatedly queries `/analyses/{id}` until the scan
+// completes or a timeout is reached.
 func pollAnalysis(apiKey, id string) (map[string]int, string, error) {
 	url := fmt.Sprintf("https://www.virustotal.com/api/v3/analyses/%s", id)
 
 	for i := 0; i < 15; i++ {
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return nil, "", err
+		}
 
-		req, _ := http.NewRequest("GET", url, nil)
 		req.Header.Set("x-apikey", apiKey)
 
 		resp, err := http.DefaultClient.Do(req)
@@ -207,8 +301,32 @@ func pollAnalysis(apiKey, id string) (map[string]int, string, error) {
 			return nil, "", err
 		}
 
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		if err != nil {
+			return nil, "", err
+		}
+
+		switch resp.StatusCode {
+		case http.StatusOK:
+			// Analysis exists → continue parsing response
+
+		case http.StatusUnauthorized:
+			// Invalid or missing API key
+			return nil, "", fmt.Errorf("unauthorized (401)")
+
+		case http.StatusNotFound:
+			// Analysis ID not found
+			return nil, "", fmt.Errorf("analysis ID not found (404)")
+
+		case http.StatusTooManyRequests:
+			// API rate limit exceeded
+			return nil, "", fmt.Errorf("rate limit exceeded (429)")
+
+		default:
+			// Any unexpected HTTP error
+			return nil, "", fmt.Errorf("analysis polling failed: %d", resp.StatusCode)
+		}
 
 		var result struct {
 			Data struct {
@@ -219,7 +337,9 @@ func pollAnalysis(apiKey, id string) (map[string]int, string, error) {
 			} `json:"data"`
 		}
 
-		json.Unmarshal(body, &result)
+		if err := json.Unmarshal(body, &result); err != nil {
+			return nil, "", err
+		}
 
 		if result.Data.Attributes.Status == "completed" {
 			return result.Data.Attributes.Stats,
@@ -230,5 +350,5 @@ func pollAnalysis(apiKey, id string) (map[string]int, string, error) {
 		time.Sleep(2 * time.Second)
 	}
 
-	return nil, "", fmt.Errorf("timeout")
+	return nil, "", fmt.Errorf("analysis timeout after polling")
 }

@@ -9,7 +9,11 @@ import (
 )
 
 func generateGeminiExplanation(apiKey, filename string,
-	malicious, suspicious, harmless, undetected int) string {
+		malicious, suspicious, harmless, undetected int,) string {
+
+	if apiKey == "" {
+		return "GEMINI_API_KEY is empty."
+	}
 
 	prompt := fmt.Sprintf(`
 		You are a cybersecurity assistant.
@@ -44,13 +48,12 @@ func generateGeminiExplanation(apiKey, filename string,
 		Avoid:
 		- <one short warning>
 		`,
-			filename,
-			malicious,
-			suspicious,
-			harmless,
-			undetected,
+		filename,
+		malicious,
+		suspicious,
+		harmless,
+		undetected,
 	)
-
 
 	reqBody := map[string]any{
 		"contents": []map[string]any{
@@ -62,20 +65,19 @@ func generateGeminiExplanation(apiKey, filename string,
 		},
 	}
 
-	bodyBytes, _ := json.Marshal(reqBody)
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return "Failed to prepare AI request."
+	}
 
 	url := fmt.Sprintf(
 		"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=%s",
 		apiKey,
 	)
 
-	if apiKey == "" {
-		return "GEMINI_API_KEY is empty."
-	}
-
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(bodyBytes))
 	if err != nil {
-		return "AI unavailable."
+		return "AI service unavailable."
 	}
 	defer resp.Body.Close()
 
@@ -84,14 +86,20 @@ func generateGeminiExplanation(apiKey, filename string,
 		return "Failed to read Gemini response."
 	}
 
-	fmt.Println("Gemini raw response:")
-	fmt.Println(string(body))
+	switch resp.StatusCode {
+	case http.StatusOK:
+		// Continue parsing
 
-	if resp.StatusCode == http.StatusTooManyRequests {
-		return "AI explanation unavailable: Gemini quota exceeded. Please try again later."
-	}
+	case http.StatusTooManyRequests:
+		return "AI explanation unavailable: Gemini quota exceeded."
 
-	if resp.StatusCode != http.StatusOK {
+	case http.StatusUnauthorized:
+		return "Gemini authentication failed (401)."
+
+	case http.StatusForbidden:
+		return "Gemini access forbidden (403)."
+
+	default:
 		return fmt.Sprintf("Gemini API error (HTTP %d).", resp.StatusCode)
 	}
 
@@ -109,10 +117,10 @@ func generateGeminiExplanation(apiKey, filename string,
 		return "Failed to parse Gemini response."
 	}
 
-	if len(result.Candidates) == 0 {
+	if len(result.Candidates) == 0 ||
+		len(result.Candidates[0].Content.Parts) == 0 {
 		return "No explanation generated."
 	}
 
 	return result.Candidates[0].Content.Parts[0].Text
 }
-
