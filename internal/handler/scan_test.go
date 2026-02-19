@@ -22,7 +22,7 @@ func TestProcessScan_FileMissing(t *testing.T) {
 }
 
 func TestProcessScan_FileTooLarge(t *testing.T) {
-	largeData := make([]byte, 700<<20) // 11MB
+	largeData := make([]byte, 700<<20) // 700MB
 	body := bytes.NewBuffer(largeData)
 
 	req := httptest.NewRequest(http.MethodPost, "/", body)
