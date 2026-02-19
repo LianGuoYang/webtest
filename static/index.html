@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>VirusTotal Scanner + Gemini AI</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+  <h2>VirusTotal Scanner + Gemini AI Explanation</h2>
+
+  <div class="container">
+
+    <div class="left">
+      <form id="uploadForm">
+        <input type="file" id="fileInput" name="file" required />
+        <button type="submit">Scan File</button>
+        <div class="small">Max 650MB</div>
+      </form>
+    </div>
+
+    <div class="right">
+      <div class="ai-box" id="aiBox">
+        No scan yet.
+      </div>
+    </div>
+
+    <div class="history">
+      <div class="section-title">Scan History</div>
+      <div id="historyList"></div>
+    </div>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -17,7 +17,7 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 		processScan(w, r)
 		return
 	}
-	renderPage(w)
+	renderPage(w, r)
 }
 
 func processScan(w http.ResponseWriter, r *http.Request) {

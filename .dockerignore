@@ -35,3 +35,7 @@ node_modules
 *.zip
 *.tar
 *.gz
+
+files
+app
+server.log
