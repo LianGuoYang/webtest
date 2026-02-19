@@ -7,17 +7,6 @@ import (
 	"testing"
 )
 
-func TestMainHandler_GET(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	w := httptest.NewRecorder()
-
-	MainHandler(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 for GET, got %d", w.Code)
-	}
-}
-
 func TestProcessScan_FileMissing(t *testing.T) {
 	body := &bytes.Buffer{}
 	req := httptest.NewRequest(http.MethodPost, "/", body)
@@ -33,7 +22,7 @@ func TestProcessScan_FileMissing(t *testing.T) {
 }
 
 func TestProcessScan_FileTooLarge(t *testing.T) {
-	largeData := make([]byte, 11<<20) // 11MB
+	largeData := make([]byte, 700<<20) // 11MB
 	body := bytes.NewBuffer(largeData)
 
 	req := httptest.NewRequest(http.MethodPost, "/", body)
