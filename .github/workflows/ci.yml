@@ -2,7 +2,7 @@ name: Go CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
 
 jobs:
@@ -22,10 +22,10 @@ jobs:
         run: go mod download
 
       - name: Run tests
-        run: go test ./...
+        run: go test -v ./...
 
       - name: Build application
-        run: go build -v ./cmd
+        run: go build -v ./cmd/...
 
       - name: Build Docker image
         run: docker build -t virustotal-scanner .
