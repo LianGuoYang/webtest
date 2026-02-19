@@ -19,7 +19,9 @@ jobs:
           script: |
             set -euo pipefail
             cd ~/webtest
-            git pull origin main
+            git fetch origin
+            git reset --hard origin/main
+
 
             docker build -t virustotal-scanner .
 
@@ -33,6 +35,10 @@ jobs:
               -p 80:8080 \
               --restart unless-stopped \
               --name virustotal-scanner \
+              --log-driver json-file \
+              --log-opt max-size=10m \
+              --log-opt max-file=3 \
               -e VT_API_KEY=$VT \
               -e GEMINI_API_KEY=$GEM \
               virustotal-scanner
+

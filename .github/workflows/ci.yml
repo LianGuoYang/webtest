@@ -25,7 +25,7 @@ jobs:
         run: go test ./...
 
       - name: Build application
-        run: go build -v ./...
+        run: go build -v ./cmd
 
       - name: Build Docker image
         run: docker build -t virustotal-scanner .

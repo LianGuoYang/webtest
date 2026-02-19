@@ -1,4 +1,4 @@
-package main
+package service
 
 import (
 	"bytes"
@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"context"
 )
 
-func generateGeminiExplanation(apiKey, filename string,
+func GenerateGeminiExplanation(ctx context.Context, apiKey, filename string,
 		malicious, suspicious, harmless, undetected int,) string {
 
 	if apiKey == "" {

@@ -1,17 +1,18 @@
-package main
+package tests
 
 import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"webtest/internal/handler"
 )
 
 func TestMainHandler_GET(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
 
-	mainHandler(w, req)
+	handler.MainHandler(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 for GET, got %d", w.Code)
@@ -25,7 +26,7 @@ func TestProcessScan_FileMissing(t *testing.T) {
 
 	w := httptest.NewRecorder()
 
-	mainHandler(w, req)
+	handler.MainHandler(w, req)
 
 	if w.Code == http.StatusOK {
 		t.Fatalf("expected error when file missing")
@@ -41,7 +42,7 @@ func TestProcessScan_FileTooLarge(t *testing.T) {
 
 	w := httptest.NewRecorder()
 
-	mainHandler(w, req)
+	handler.MainHandler(w, req)
 
 	if w.Code == http.StatusOK {
 		t.Fatalf("expected error for large file")

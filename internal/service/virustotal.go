@@ -1,4 +1,4 @@
-package main
+package service
 
 import (
 	"bytes"
@@ -10,26 +10,33 @@ import (
 	"net/http"
 	"os"
 	"time"
+	"webtest/internal/logger"
 )
 
 // getFileReport queries VirusTotal’s `/files/{hash}` endpoint to retrieve
 // existing analysis statistics for a file based on its SHA256 hash.
 // Reference: https://docs.virustotal.com/reference/file-info
-func getFileReport(apiKey, hash string) (map[string]int, string, bool, error) {
+func GetFileReport(ctx context.Context, apiKey, hash string) (map[string]int, string, bool, error) {
+	logger := logger.GetLogger(ctx)
+	logger.Info("vt_lookup_request_started", "sha256", hash)
+
 	url := fmt.Sprintf("https://www.virustotal.com/api/v3/files/%s", hash)
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, "", false, err
 	}
 
 	req.Header.Set("x-apikey", apiKey)
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, "", false, err
 	}
 	defer resp.Body.Close()
+
+	logger.Info("vt_lookup_response_received", "status_code", resp.StatusCode)
 
 	switch resp.StatusCode {
 	case http.StatusOK:
@@ -65,6 +72,8 @@ func getFileReport(apiKey, hash string) (map[string]int, string, bool, error) {
 		return nil, "", false, err
 	}
 
+	logger.Info("vt_lookup_success")
+
 	return result.Data.Attributes.LastAnalysisStats,
 		"completed",
 		true,
@@ -73,7 +82,10 @@ func getFileReport(apiKey, hash string) (map[string]int, string, bool, error) {
 
 // Reference: https://docs.virustotal.com/reference/files-scan
 // uploadToVirusTotal sends a file (≤32MB) to VirusTotal’s `/files` endpoint using multipart/form-data.
-func uploadToVirusTotal(apiKey, filename string, file io.Reader) (string, error) {
+func UploadToVirusTotal(ctx context.Context, apiKey, filename string, file io.Reader) (string, error) {
+	logger := logger.GetLogger(ctx)
+	logger.Info("vt_direct_upload_started", "filename", filename)
+
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 
@@ -90,7 +102,8 @@ func uploadToVirusTotal(apiKey, filename string, file io.Reader) (string, error)
 		return "", err
 	}
 
-	req, err := http.NewRequest("POST",
+	req, err := http.NewRequestWithContext(ctx, 
+		"POST",
 		"https://www.virustotal.com/api/v3/files",
 		&buf,
 	)
@@ -101,11 +114,14 @@ func uploadToVirusTotal(apiKey, filename string, file io.Reader) (string, error)
 	req.Header.Set("x-apikey", apiKey)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
+
+	logger.Info("vt_direct_upload_response", "status_code", resp.StatusCode)
 
 	switch resp.StatusCode {
 	case http.StatusOK:
@@ -133,13 +149,18 @@ func uploadToVirusTotal(apiKey, filename string, file io.Reader) (string, error)
 		return "", err
 	}
 
+	logger.Info("vt_direct_upload_success", "analysis_id", out.Data.ID)
+
 	return out.Data.ID, nil
 }
 
 // Reference: https://docs.virustotal.com/reference/files-upload-url
 // getLargeUploadURL retrieves a one-time upload URL from VirusTotal
 // for files larger than 32MB (up to 650MB).
-func getLargeUploadURL(ctx context.Context, apiKey string) (string, error) {
+func GetLargeUploadURL(ctx context.Context, apiKey string) (string, error) {
+	logger := logger.GetLogger(ctx)
+	logger.Info("vt_large_upload_url_request_started")
+
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
@@ -165,6 +186,8 @@ func getLargeUploadURL(ctx context.Context, apiKey string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	logger.Info("vt_large_upload_url_response", "status_code", resp.StatusCode)
 
 	switch resp.StatusCode {
 	case http.StatusOK:
@@ -199,10 +222,15 @@ func getLargeUploadURL(ctx context.Context, apiKey string) (string, error) {
 		return "", fmt.Errorf("empty upload URL received")
 	}
 
+	logger.Info("vt_large_upload_url_success")
+
 	return out.Data, nil
 }
 
-func uploadLargeFile(ctx context.Context, uploadURL, filename string, file *os.File) (string, error) {
+func UploadLargeFile(ctx context.Context, apiKey, uploadURL, filename string, file *os.File) (string, error) {
+	logger := logger.GetLogger(ctx)
+	logger.Info("vt_large_upload_started", "filename", filename)
+
 	pr, pw := io.Pipe()
 	writer := multipart.NewWriter(pw)
 
@@ -232,6 +260,7 @@ func uploadLargeFile(ctx context.Context, uploadURL, filename string, file *os.F
 		return "", err
 	}
 
+	req.Header.Set("x-apikey", apiKey)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
 	client := &http.Client{
@@ -248,6 +277,8 @@ func uploadLargeFile(ctx context.Context, uploadURL, filename string, file *os.F
 	if err != nil {
 		return "", err
 	}
+
+	logger.Info("vt_large_upload_response", "status_code", resp.StatusCode)
 
 	switch resp.StatusCode {
 	case http.StatusOK:
@@ -280,23 +311,29 @@ func uploadLargeFile(ctx context.Context, uploadURL, filename string, file *os.F
 		return "", fmt.Errorf("no analysis ID returned")
 	}
 
+	logger.Info("vt_large_upload_success", "analysis_id", out.Data.ID)
+
 	return out.Data.ID, nil
 }
 
 // pollAnalysis repeatedly queries `/analyses/{id}` until the scan
 // completes or a timeout is reached.
-func pollAnalysis(apiKey, id string) (map[string]int, string, error) {
-	url := fmt.Sprintf("https://www.virustotal.com/api/v3/analyses/%s", id)
+func PollAnalysis(ctx context.Context, apiKey, id string) (map[string]int, string, error) {
+	logger := logger.GetLogger(ctx)
+	logger.Info("vt_polling_started", "analysis_id", id)
 
-	for i := 0; i < 15; i++ {
-		req, err := http.NewRequest("GET", url, nil)
+	url := fmt.Sprintf("https://www.virustotal.com/api/v3/analyses/%s", id)
+	client := &http.Client{Timeout: 30 * time.Second}
+
+	for i := 0; i < 30; i++ {
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 		if err != nil {
 			return nil, "", err
 		}
 
 		req.Header.Set("x-apikey", apiKey)
 
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := client.Do(req)
 		if err != nil {
 			return nil, "", err
 		}
@@ -306,6 +343,11 @@ func pollAnalysis(apiKey, id string) (map[string]int, string, error) {
 		if err != nil {
 			return nil, "", err
 		}
+
+		logger.Info("vt_polling_attempt",
+			"attempt", i+1,
+			"status_code", resp.StatusCode,
+		)
 
 		switch resp.StatusCode {
 		case http.StatusOK:
@@ -342,6 +384,8 @@ func pollAnalysis(apiKey, id string) (map[string]int, string, error) {
 		}
 
 		if result.Data.Attributes.Status == "completed" {
+			logger.Info("vt_polling_completed")
+
 			return result.Data.Attributes.Stats,
 				result.Data.Attributes.Status,
 				nil
@@ -349,6 +393,8 @@ func pollAnalysis(apiKey, id string) (map[string]int, string, error) {
 
 		time.Sleep(2 * time.Second)
 	}
+
+	logger.Error("vt_polling_timeout")
 
 	return nil, "", fmt.Errorf("analysis timeout after polling")
 }
