@@ -120,196 +120,92 @@ We look forward to seeing your innovative solutions and thoughtful designs!
 
 # VirusTotal + Gemini AI File Scanner
 
-## Overview
-This project is a cloud-native web application built with Golang that scans uploaded files using the VirusTotal API and generates structured, human-readable security explanations using Google Gemini AI.
-
-The application is containerized with Docker, deployed on AWS EC2, and integrated with a CI/CD pipeline via GitHub Actions. It is designed with security, scalability, and maintainability in mind.
+A cloud-native Golang web application that scans uploaded files using VirusTotal and generates structured, human-readable security explanations using Google Gemini AI.
 
 
+---
+
+## Tech Stack
+
+- Backend: Golang (net/http)
+- Frontend: HTML5, CSS3, Vanilla JavaScript
+- Containerization: Docker
+- Cloud: AWS EC2
+- CI/CD: GitHub Actions
+- Security: AWS IAM + Secrets Manager
 
 ---
 
 ## Features
-* **Secure File Upload**: Supports files up to 650MB with strict server-side validation.
-* **Large File Handling**: Automatically switches between `/files` (≤32MB) and `/files/upload_url` (>32MB) endpoints.
-* **Efficient Scanning**: Performs SHA256 hash lookup before upload to avoid redundant submissions.
-* **AI Interpretation**: Generates structured, user-friendly explanations via Gemini.
-* **Modern UI**: Dynamic rendering with detection breakdown and scan history sidebar.
-* **Cloud-Ready Deployment**: Dockerized application with AWS Secrets Manager integration.
-* **Resilient Design**: Graceful handling of API rate limits (HTTP 429) and upload timeouts.
-* **Automated Delivery**: CI/CD pipeline via GitHub Actions with auto-deploy on push to `main`.
 
+- Secure file uploads (≤650MB)
+- SHA256 hash lookup optimization
+- Automatic handling of large files (>32MB)
+- Structured AI-powered security explanation
+- Risk-based detection breakdown
+- Session-based scan history
 
 ---
 
-## Architecture
+## Live Demo
 
-### Frontend
-* HTML5, CSS3, and JavaScript (Vanilla).
-* Dynamic result rendering with risk-based color indicators.
-* Persistent scan history panel for the session.
+http://18.142.78.188
 
-### Backend
-* **Golang** HTTP server for high-performance concurrency.
-* Secure multipart file handling with disk-based streaming for memory safety.
-* SHA256 hashing for efficient VirusTotal lookup optimization.
-* Integration with VirusTotal and Gemini REST APIs.
-
-### Infrastructure
-* **AWS EC2 (Ubuntu)**: Reliable hosting environment.
-* **Docker**: Consistent container runtime.
-* **Networking**: Elastic IP and Security Groups (Ports 80/22).
-* **Security**: IAM Roles for secure access to Secrets Manager.
-* **Github Actions**: Continuous Integration & Deployment pipeline.
+(HTTP only for demonstration. HTTPS recommended for production.)
 
 ---
 
-## Project Structure
-```text
-.
-├── .github/
-│   └── workflows/
-│       ├── ci.yml             # CI/CD pipeline
-│       └── deploy.yml         # Deployment workflow
-├── main.go                    # Server entry point
-├── handler.go                 # Request/Response logic
-├── virustotal.go              # VirusTotal API client
-├── gemini.go                  # Gemini AI integration
-├── utils.go                   # Hashing and validation helpers
-├── page.go                    # HTML template rendering
-├── Dockerfile                 # Container configuration
-├── go.mod                     # Dependency management
-└── README.md                  # Project documentation
+## How to Use
 
-```
-
-## Request Flow
-
-1. User uploads file via web interface.
-2. Server computes SHA256 hash.
-3. Server queries VirusTotal for existing analysis.
-4. If report not found:
-   - <=32MB → Upload via /files
-   - >32MB → Obtain /files/upload_url and upload there
-5. Server polls /analyses/{id} until completion.
-6. Detection statistics extracted.
-7. Gemini generates structured explanation.
-8. JSON response returned to frontend.
-
-## Live Deployment
-
-The application is publicly accessible at:
-
-[http://18.142.78.188](http://18.142.78.188)
-(Note: HTTP only for demonstration purposes. HTTPS is recommended for production.)
+1. Open the application in your browser.
+2. Upload a file (max 650MB).
+3. Click **Scan File**.
+4. View:
+   - Detection breakdown
+   - Risk classification
+   - AI-generated explanation
+   - Scan history panel
 
 ---
 
-### Hosting Details
-
-The application is deployed on an AWS EC2 Ubuntu instance
-
-- Docker container runtime
-- Elastic IP attached
-- Port **80** exposed via Security Group
-- Automatic container restart policy enabled
-- CI/CD pipeline with auto-deployment on push to `main`
-
----
-
-## Local Setup Guide
+## Local Setup
 
 ### Prerequisites
 
-Ensure the following are installed:
-
-- **Go 1.25** or later
-- **Docker** (optional, for containerized execution)
-- **VirusTotal API key**
-- **Gemini API key**
+- Go 1.25+
+- VirusTotal API key
+- Gemini API key
 
 ---
 
-## Option 1 — Run Locally (Without Docker)
-
-### 1. Clone the Repository
+### Run Without Docker
 
 ```bash
 git clone https://github.com/your-username/your-repository.git
 cd your-repository
-````
-
-### 2. Create Environment File
+```
 
 Create a file named `.env` in the project root:
-
 ```env
 VT_API_KEY=your_virustotal_api_key
 GEMINI_API_KEY=your_gemini_api_key
 ```
 
-### 3. Install Dependencies
 
 ```bash
 go mod tidy
+go run ./cmd
 ```
 
-### 4. Run the Application
-
-```bash
-go run main.go
-```
-
-### 5. Access the Server
-
-The server will start at:
-
-```
-http://localhost:8080
-```
-
----
-
-## Option 2 — Run Using Docker
-
-### 1. Build Docker Image
+### Run With Docker
 
 ```bash
 docker build -t virustotal-scanner .
-```
-
-### 2. Run the Container
-
-```bash
 docker run -p 8080:8080 --env-file .env virustotal-scanner
 ```
 
-### 3. Access the Server
+The server will be available at:
 
-```
 http://localhost:8080
-```
 
-## Limitations
-
-- VirusTotal and Gemini free-tier rate limits apply.
-- Files larger than 200MB may experience longer analysis times.
-- Polling is synchronous and may block the request for several minutes during large scans.
-- HTTPS is not enabled in the current deployment (recommended for production use).
-
-## Security Considerations
-
-- API keys are never stored in source code.
-- AWS IAM Roles used instead of hardcoded credentials.
-- Temporary files are automatically deleted after processing.
-- Server-side upload size limits enforced to prevent abuse.
-- Errors are sanitized before returning to clients.
-
-## Challenges Faced
-
-- Designed memory-safe large file uploads (≤32MB vs >32MB endpoint switching).
-- Implemented asynchronous VirusTotal polling with timeout handling.
-- Managed API rate limits (HTTP 429) with graceful error handling.
-- Configured secure AWS EC2 deployment with IAM-based secrets management.
-- Automated build and deployment using GitHub Actions CI/CD.
-- Resolved GitHub large-file push rejections and cleaned commit history.
+For architecture and deployment details, see `DESIGN.md`.
